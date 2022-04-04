@@ -51,6 +51,7 @@ ImageProjection::ImageProjection(ros::NodeHandle& nh,
       nh.advertise<cloud_msgs::cloud_info>("/segmented_cloud_info", 1);
   _pub_outlier_cloud = nh.advertise<sensor_msgs::PointCloud2>("/outlier_cloud", 1);
 
+  /* run.aunch : <rosparam file="$(find lego_loam_bor)/config/loam_config.yaml" command="load"/> */
   nh.getParam("/lego_loam/laser/num_vertical_scans", _vertical_scans);
   nh.getParam("/lego_loam/laser/num_horizontal_scans", _horizontal_scans);
   nh.getParam("/lego_loam/laser/vertical_angle_bottom", _ang_bottom);
@@ -281,12 +282,12 @@ void ImageProjection::cloudSegmentation() {
   int sizeOfSegCloud = 0;
   // extract segmented cloud for lidar odometry
   for (size_t i = 0; i < _vertical_scans; ++i) {
-    _seg_msg.startRingIndex[i] = sizeOfSegCloud - 1 + 5;
+    _seg_msg.startRingIndex[i] = sizeOfSegCloud - 1 + 5;  /* 记录的是起始点的索引 */
 
     for (size_t j = 0; j < _horizontal_scans; ++j) {
       if (_label_mat(i, j) > 0 || _ground_mat(i, j) == 1) {
         // outliers that will not be used for optimization (always continue)
-        if (_label_mat(i, j) == 999999) {
+        if (_label_mat(i, j) == 999999) {  /* 聚类，但是个数较少的标记 */
           if (i > _ground_scan_index && j % 5 == 0) {
             _outlier_cloud->push_back(
                 _full_cloud->points[j + i * _horizontal_scans]);
@@ -384,7 +385,7 @@ void ImageProjection::labelComponents(int row, int col) {
       float alpha = (iter.x() == 0) ? _ang_resolution_X : _ang_resolution_Y;
       float tang = (d2 * sin(alpha) / (d1 - d2 * cos(alpha)));
 
-      if (tang > segmentThetaThreshold) {
+      if (tang > segmentThetaThreshold) {  /* d1 - d2 * cos(alpha) 越小 */
         queue.push_back( {thisIndX, thisIndY } );
 
         _label_mat(thisIndX, thisIndY) = _label_count;

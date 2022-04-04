@@ -66,7 +66,7 @@ class ImageProjection {
   int _label_count;
 
   Eigen::MatrixXf _range_mat;   // range matrix for range image
-  Eigen::MatrixXi _label_mat;   // label matrix for segmentaiton marking
+  Eigen::MatrixXi _label_mat;   // label matrix for segmentaiton marking. -1 : ground
   Eigen::Matrix<int8_t,Eigen::Dynamic,Eigen::Dynamic> _ground_mat;  // ground matrix for ground cloud marking
 
 
