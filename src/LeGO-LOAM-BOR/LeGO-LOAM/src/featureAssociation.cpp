@@ -176,7 +176,7 @@ void FeatureAssociation::adjustDistortion() {
 
     float relTime = (ori - segInfo.startOrientation) / segInfo.orientationDiff;
     point.intensity =
-        int(segmentedCloud->points[i].intensity) + _scan_period * relTime;
+        int(segmentedCloud->points[i].intensity) + _scan_period * relTime;  /* 之前记录的是行列索引 */
 
     segmentedCloud->points[i] = point;
   }
@@ -185,7 +185,7 @@ void FeatureAssociation::adjustDistortion() {
 void FeatureAssociation::calculateSmoothness() {
   int cloudSize = segmentedCloud->points.size();
   for (int i = 5; i < cloudSize - 5; i++) {
-    float diffRange = segInfo.segmentedCloudRange[i - 5] +
+    float diffRange = segInfo.segmentedCloudRange[i - 5] +    /* 不一定满足空间关系。需要360°FOV */
                       segInfo.segmentedCloudRange[i - 4] +
                       segInfo.segmentedCloudRange[i - 3] +
                       segInfo.segmentedCloudRange[i - 2] +
@@ -197,7 +197,7 @@ void FeatureAssociation::calculateSmoothness() {
                       segInfo.segmentedCloudRange[i + 4] +
                       segInfo.segmentedCloudRange[i + 5];
 
-    cloudCurvature[i] = diffRange * diffRange;
+    cloudCurvature[i] = diffRange * diffRange;  /* 没有归一化 */
 
     cloudNeighborPicked[i] = 0;
     cloudLabel[i] = 0;
@@ -217,8 +217,8 @@ void FeatureAssociation::markOccludedPoints() {
                                   segInfo.segmentedCloudColInd[i]));
 
     if (columnDiff < 10) {
-      if (depth1 - depth2 > 0.3) {
-        cloudNeighborPicked[i - 5] = 1;
+      if (depth1 - depth2 > 0.3) {  /* 选择距离更近的点，远处的可能被遮挡了 */
+        cloudNeighborPicked[i - 5] = 1;  /* 相邻点被选择后，该点就不能再被选择了 */
         cloudNeighborPicked[i - 4] = 1;
         cloudNeighborPicked[i - 3] = 1;
         cloudNeighborPicked[i - 2] = 1;
@@ -240,8 +240,8 @@ void FeatureAssociation::markOccludedPoints() {
                            segInfo.segmentedCloudRange[i]);
 
     if (diff1 > 0.02 * segInfo.segmentedCloudRange[i] &&
-        diff2 > 0.02 * segInfo.segmentedCloudRange[i])
-      cloudNeighborPicked[i] = 1;
+        diff2 > 0.02 * segInfo.segmentedCloudRange[i]) /* 非边缘点、非平面点 */
+      cloudNeighborPicked[i] = 1;  
   }
 }
 
@@ -266,7 +266,7 @@ void FeatureAssociation::extractFeatures() {
       if (sp >= ep) continue;
 
       std::sort(cloudSmoothness.begin() + sp, cloudSmoothness.begin() + ep,
-                by_value());
+                by_value());  /* 分区，选点。保证选点均匀 */
 
       int largestPickedNum = 0;
       for (int k = ep; k >= sp; k--) {
@@ -295,7 +295,7 @@ void FeatureAssociation::extractFeatures() {
                 std::abs(int(segInfo.segmentedCloudColInd[ind + l] -
                              segInfo.segmentedCloudColInd[ind + l - 1]));
             if (columnDiff > 10) break;
-            cloudNeighborPicked[ind + l] = 1;
+            cloudNeighborPicked[ind + l] = 1;  /* 相邻点只能选1个 */
           }
           for (int l = -1; l >= -5; l--) {
             if( ind + l < 0 ) {
@@ -359,7 +359,7 @@ void FeatureAssociation::extractFeatures() {
 
     surfPointsLessFlatScanDS->clear();
     downSizeFilter.setInputCloud(surfPointsLessFlatScan);
-    downSizeFilter.filter(*surfPointsLessFlatScanDS);
+    downSizeFilter.filter(*surfPointsLessFlatScanDS);  /* 普通点经过降采样 */
 
     *surfPointsLessFlat += *surfPointsLessFlatScanDS;
   }
@@ -587,12 +587,13 @@ void FeatureAssociation::findCorrespondingCornerFeatures(int iterCount) {
 
 void FeatureAssociation::findCorrespondingSurfFeatures(int iterCount) {
   int surfPointsFlatNum = surfPointsFlat->points.size();
+  // 为surfPointsFlat的点寻找在上一帧的匹配点,匹配点范围为上一帧的surfPointsLessFlatScan
 
   for (int i = 0; i < surfPointsFlatNum; i++) {
     PointType pointSel;
-    TransformToStart(&surfPointsFlat->points[i], &pointSel);
+    TransformToStart(&surfPointsFlat->points[i], &pointSel);  // 将当前帧的点与本帧的起始时间对其
 
-    if (iterCount % 5 == 0) {
+    if (iterCount % 5 == 0) {  // 额外寻找距离 pointSel 最近的点
       kdtreeSurfLast.nearestKSearch(pointSel, 1, pointSearchInd,
                                      pointSearchSqDis);
       int closestPointInd = -1, minPointInd2 = -1, minPointInd3 = -1;
@@ -668,6 +669,7 @@ void FeatureAssociation::findCorrespondingSurfFeatures(int iterCount) {
       PointType tripod2 = laserCloudSurfLast->points[pointSearchSurfInd2[i]];
       PointType tripod3 = laserCloudSurfLast->points[pointSearchSurfInd3[i]];
 
+      // 计算点面距离
       float pa = (tripod2.y - tripod1.y) * (tripod3.z - tripod1.z) -
                  (tripod3.y - tripod1.y) * (tripod2.z - tripod1.z);
       float pb = (tripod2.z - tripod1.z) * (tripod3.x - tripod1.x) -
@@ -1280,17 +1282,17 @@ void FeatureAssociation::runFeatureAssociation() {
     if( !ros::ok() ) break;
 
     //--------------
-    outlierCloud = projection.outlier_cloud;
-    segmentedCloud = projection.segmented_cloud;
-    segInfo = std::move(projection.seg_msg);
+    outlierCloud = projection.outlier_cloud;      /* 聚类，但是个数少的类，非地面 */  
+    segmentedCloud = projection.segmented_cloud;  /* 地面点 和 聚类有效点 */
+    segInfo = std::move(projection.seg_msg);      /* 地面点 和 聚类有效点，但属性不同 */
 
     cloudHeader = segInfo.header;
     timeScanCur = cloudHeader.stamp.toSec();
 
     /**  1. Feature Extraction  */
-    adjustDistortion();
+    adjustDistortion();  /* intensity 加上时间。小数部分是时间 */
 
-    calculateSmoothness();
+    calculateSmoothness();  /* 没有对距离进行归一化 */
 
     markOccludedPoints();
 
